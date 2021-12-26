@@ -27,7 +27,7 @@ Global Variables:
     running : True : Batch will continually run this model's steps indefinitely'''
 class ABM(Model):
 
-    def __init__(self, num_stem_cells: int , num_morph: int , sauce: bool , num_nodals: int , num_leftys: int , spawn_freq: int , diff_timer: int , endo_min: int , ecto_max: int) -> None:
+    def __init__(self, num_stem_cells: int , num_morph: int , sauce: bool , num_nodals: int , num_leftys: int , spawn_freq: int , diff_timer: int , endo_min: int , ecto_max: int , max_x=20 , max_y=20) -> None:
         self.num_stem_cells = num_stem_cells
         self.num_morph = num_morph
         self.sauce = sauce
@@ -46,7 +46,7 @@ class ABM(Model):
         self.avg_radius = 0
         self.schedule = StagedActivation(self , ["movement" , "reaction_regulation" , "differentiation_tick" , "tracking_update"])
         self.running = True
-        self.space = ContinuousSpace(20 , 20 , False , 0 , 0)
+        self.space = ContinuousSpace(max_x , max_y , False , 0 , 0)
         self.setup()
         
 

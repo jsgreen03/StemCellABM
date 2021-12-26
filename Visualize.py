@@ -3,6 +3,9 @@ from mesa.visualization.modules.CanvasContinuousVisualization import CanvasConti
 from mesa.visualization.ModularVisualization import ModularServer
 from StemCellABM import StemCell , Morphogen , Nodal , Lefty , ABM
 
+max_x = 20
+max_y = 20
+
 def agent_portrayal(agent : Agent):
     if agent.__class__ == StemCell:
         portrayal = {
@@ -38,7 +41,7 @@ def agent_portrayal(agent : Agent):
         }
     return portrayal
 
-space = CanvasContinuous(agent_portrayal , 20 , 20 , 500 , 500)
-server = ModularServer(ABM , [space] , "Stem Cell ABM" , {"num_stem_cells": 10 , "num_morph": 10 , "sauce": False , "num_nodals": 10 , "num_leftys": 10 , "spawn_freq": 10 , "diff_timer": 10 , "endo_min": 10 , "ecto_max": 10})
+space = CanvasContinuous(agent_portrayal , max_x , max_y , 500 , 500)
+server = ModularServer(ABM , [space] , "Stem Cell ABM" , {"num_stem_cells": 10 , "num_morph": 10 , "sauce": False , "num_nodals": 10 , "num_leftys": 10 , "spawn_freq": 10 , "diff_timer": 10 , "endo_min": 10 , "ecto_max": 10 , "max_x": max_x , "max_y": max_y})
 server.port = 8521
 server.launch()
