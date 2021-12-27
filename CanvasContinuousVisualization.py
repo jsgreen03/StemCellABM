@@ -1,9 +1,15 @@
 from collections import defaultdict
 from mesa.visualization.ModularVisualization import VisualizationElement
 
+
 class CanvasContinuous(VisualizationElement):
+    """Creation of Custom VisualizationElement to render ContinuousSpace (CanvasContinuous)
 
+        Mesa Package did not come with a VisualizationElement preloaded for its ContinuousSpace model, so I designed a custom one. Included are three modified JavaScript files that are
+        designed to support this VisualizationElement and render the model onto the ModularServer. These JS Files are necessary to run the model.
 
+        Space_Width and Space_Height (similar to grid_width and grid_height) are used to scale agents in the ContinuousSpace to proportionally visualize on the HTML5 canvas element.
+        """
 
     package_includes = ["ContinuousDraw.js", "CanvasContinuousModule.js", "ContinuousInteractionHandler.js"]
 

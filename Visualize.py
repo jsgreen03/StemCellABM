@@ -2,16 +2,26 @@ from mesa.agent import Agent
 from mesa.visualization.modules.CanvasContinuousVisualization import CanvasContinuous
 from mesa.visualization.ModularVisualization import ModularServer
 from StemCellABM import StemCell , Morphogen , Nodal , Lefty , ABM
+import Constants
 
-max_x = 20
-max_y = 20
 
 def agent_portrayal(agent : Agent):
+    """Definition of Agent Portrayals
+
+        Can be adjusted to make images of agents appear differently in the visualization. 
+        Currently, I am using small circles for all with different colors to distinguish between agents
+
+        Colors:
+            StemCell = Black
+            Morphogen = Orange
+            Nodal = Blue
+            Lefty = Purple"""
+
     if agent.__class__ == StemCell:
         portrayal = {
             "Shape" : "circle",
             "Filled" : "true",
-            "r" : 0.1,
+            "r" : Constants.STEMCELL_R,
             "Color" : "black",
             "Layer" : 1
         }
@@ -19,7 +29,7 @@ def agent_portrayal(agent : Agent):
         portrayal = {
             "Shape" : "circle",
             "Filled" : "true",
-            "r" : 0.05,
+            "r" : Constants.MORPHOGEN_R,
             "Color" : "orange",
             "Layer" : 0
         }
@@ -27,7 +37,7 @@ def agent_portrayal(agent : Agent):
         portrayal = {
             "Shape" : "circle",
             "Filled" : "true",
-            "r" : 0.01,
+            "r" : Constants.NODAL_R,
             "Color" : "blue",
             "Layer" : 2
         }
@@ -35,13 +45,16 @@ def agent_portrayal(agent : Agent):
         portrayal = {
             "Shape" : "circle",
             "Filled" : "true",
-            "r" : 0.01,
+            "r" : Constants.LEFTY_R,
             "Color" : "purple",
             "Layer" : 3
         }
     return portrayal
 
-space = CanvasContinuous(agent_portrayal , max_x , max_y , 500 , 500)
-server = ModularServer(ABM , [space] , "Stem Cell ABM" , {"num_stem_cells": 10 , "num_morph": 10 , "sauce": False , "num_nodals": 10 , "num_leftys": 10 , "spawn_freq": 10 , "diff_timer": 10 , "endo_min": 10 , "ecto_max": 10 , "max_x": max_x , "max_y": max_y})
+#Create the ContinuousSpace
+space = CanvasContinuous(agent_portrayal , Constants.MAX_X , Constants.MAX_Y , 500 , 500)
+#Create the ModularServer
+server = ModularServer(ABM , [space] , "Stem Cell ABM" , {"num_stem_cells": Constants.NUM_STEM_CELLS , "num_morph": Constants.NUM_MORPH , "sauce": Constants.SAUCE , "num_nodals": Constants.NUM_NODALS , "num_leftys": Constants.NUM_LEFTYS , "spawn_freq": Constants.SPAWN_FREQ , "diff_timer": Constants.DIFF_TIMER , "endo_min": Constants.ENDO_MIN , "ecto_max": Constants.ECTO_MAX , "max_x": Constants.MAX_X , "max_y": Constants.MAX_Y})
 server.port = 8521
+#Start Server
 server.launch()

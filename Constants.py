@@ -1,0 +1,16 @@
+#Constant Values that determine size of Continuous Space and Agents
+MAX_X = 20
+MAX_Y = 20
+STEMCELL_R = 0.1
+MORPHOGEN_R = 0.05
+NODAL_R = 0.01
+LEFTY_R = 0.01
+NUM_STEM_CELLS = 10
+NUM_MORPH = 500
+SAUCE = False
+NUM_NODALS = 10
+NUM_LEFTYS = 10
+SPAWN_FREQ = 10
+DIFF_TIMER = 10
+ENDO_MIN = 10
+ECTO_MAX = 10

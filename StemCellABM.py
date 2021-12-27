@@ -3,31 +3,32 @@ from mesa.time import StagedActivation
 from mesa.datacollection import DataCollector
 from mesa.space import ContinuousSpace
 import math
+import Constants
 
-'''Creation of Agent-Based-Model Class
-Stages of Model Per Tick: "movement" , "reaction_regulation" , "differentiation_tick" , "tracking_update"
-Global Variables:
-    num_stem_cells : Int
-    num_morph : Int
-    sauce : Boolean : True if model will measure cell differentiation after a certain diff_timer elapses
-    num_nodals : Int
-    num_leftys : Int
-    spawn_freq : Int : How much energy a given StemCell needs to reproduce
-    diff_timer : Int
-    endo_min : Int : How much concentration of Nodal a Stem Cell needs to come into contact to at minimum differntiate into an endoderm cell
-    ecto_max : Int : How little concentration of Nodal a Stem Cell needs to come into contact to at maximum differntiate into an ectoderm cell
-    one_cells_contact : Int : This attribute is used to test, it is designed to take an arbitraty Stem Cell each step and access its chemical contact
-    start_diff : Boolean : When this is True, start positional differentiation if other Stem Cells have already differentiated nearby
-    stem_cell_ex : StemCell : This attribute is used to latch onto a StemCell for purposes of tracking
-    stem_cell_ex_diff : Boolean : This attribute indicates the example StemCell's differentiation status
-    avg_x : Float : Indicates the Average X Value of all Stem Cells
-    avg_y : Float : Indicates the Average Y Value of all Stem Cells
-    avg_radius : Float : Indicates the Average Distance of all Stem Cells to the Centroid
-    schedule : StagedActivation : Staged Activation Schedule that Follows the Stages listed above
-    running : True : Batch will continually run this model's steps indefinitely'''
 class ABM(Model):
+    '''Creation of Agent-Based-Model Class
+        Stages of Model Per Tick: "movement" , "reaction_regulation" , "differentiation_tick" , "tracking_update"
+        Global Variables:
+            num_stem_cells : Int
+            num_morph : Int
+            sauce : Boolean : True if model will measure cell differentiation after a certain diff_timer elapses
+            num_nodals : Int
+            num_leftys : Int
+            spawn_freq : Int : How much energy a given StemCell needs to reproduce
+            diff_timer : Int
+            endo_min : Int : How much concentration of Nodal a Stem Cell needs to come into contact to at minimum differntiate into an endoderm cell
+            ecto_max : Int : How little concentration of Nodal a Stem Cell needs to come into contact to at maximum differntiate into an ectoderm cell
+            one_cells_contact : Int : This attribute is used to test, it is designed to take an arbitraty Stem Cell each step and access its chemical contact
+            start_diff : Boolean : When this is True, start positional differentiation if other Stem Cells have already differentiated nearby
+            stem_cell_ex : StemCell : This attribute is used to latch onto a StemCell for purposes of tracking
+            stem_cell_ex_diff : Boolean : This attribute indicates the example StemCell's differentiation status
+            avg_x : Float : Indicates the Average X Value of all Stem Cells
+            avg_y : Float : Indicates the Average Y Value of all Stem Cells
+            avg_radius : Float : Indicates the Average Distance of all Stem Cells to the Centroid
+            schedule : StagedActivation : Staged Activation Schedule that Follows the Stages listed above
+            running : True : Batch will continually run this model's steps indefinitely'''
 
-    def __init__(self, num_stem_cells: int , num_morph: int , sauce: bool , num_nodals: int , num_leftys: int , spawn_freq: int , diff_timer: int , endo_min: int , ecto_max: int , max_x=20 , max_y=20) -> None:
+    def __init__(self, num_stem_cells: int , num_morph: int , sauce: bool , num_nodals: int , num_leftys: int , spawn_freq: int , diff_timer: int , endo_min: int , ecto_max: int , max_x:int=20 , max_y:int=20) -> None:
         self.num_stem_cells = num_stem_cells
         self.num_morph = num_morph
         self.sauce = sauce
@@ -47,7 +48,9 @@ class ABM(Model):
         self.schedule = StagedActivation(self , ["movement" , "reaction_regulation" , "differentiation_tick" , "tracking_update"])
         self.running = True
         self.space = ContinuousSpace(max_x , max_y , False , 0 , 0)
+        self.center_pos = (max_x/2 , max_y/2)
         self.setup()
+        
         
 
     def setup(self):
@@ -63,8 +66,12 @@ class ABM(Model):
         for i in range(self.num_morph):
             m = Morphogen(i + self.num_stem_cells, self)
             self.schedule.add(m)
-            x = self.random.randrange(self.space.x_min , self.space.x_max)
-            y = self.random.randrange(self.space.y_min , self.space.y_max)
+
+            r = self.random.random() * 5
+            theta = self.random.random() * 2 * math.pi
+            x = r * math.cos(theta) + self.center_pos[0]
+            y = r * math.sin(theta) + self.center_pos[1]
+            
             self.space.place_agent(m , (x , y))
 
 
@@ -90,13 +97,14 @@ class ABM(Model):
         self.schedule.step()
 
 
-'''Creation of Stem Cell Agent
-Attributes: 
-   Differentiated: Boolean
-   Chemical Contact: Int
-   Energy: Int
-   Time For Diff: Int'''
+
 class StemCell(Agent):
+    '''Creation of Stem Cell Agent
+            Attributes: 
+                Differentiated: Boolean
+                Chemical Contact: Int
+                Energy: Int
+                Time For Diff: Int'''
 
     def __init__(self, unique_id: int, model: Model) -> None:
         super().__init__(unique_id , model)
@@ -105,6 +113,7 @@ class StemCell(Agent):
         self.energy = 0
         self.time_for_diff = 0
         self.theta = 0
+        self.internalR = Constants.STEMCELL_R
 
     def movement(self):
         r = 1
@@ -127,6 +136,13 @@ class StemCell(Agent):
         else:
             self.model.space.move_agent(self , (x , y))
 
+    def isTouching(self , other:Agent):
+        d = self.model.space.get_distance(self.pos , other.pos)
+        l = d - self.internalR - other.internalR
+        if l <= 0:
+            return True 
+        return False
+
 
     def reaction_regulation(self):
         return
@@ -139,11 +155,13 @@ class StemCell(Agent):
 
 
 
-'''Creation of Morphogen Agent'''
+
 class Morphogen(Agent):
+    '''Creation of Morphogen Agent'''
     
     def __init__(self, unique_id: int, model: Model) -> None:
         super().__init__(unique_id, model)
+        self.internalR = Constants.MORPHOGEN_R
 
     def movement(self):
         return
@@ -159,8 +177,9 @@ class Morphogen(Agent):
     
 
 
-'''Creation of Nodal Agent'''
+
 class Nodal(Agent):
+    '''Creation of Nodal Agent'''
 
     def __init__(self, unique_id: int, model: Model) -> None:
         super().__init__(unique_id, model)
@@ -168,6 +187,7 @@ class Nodal(Agent):
         self.immobilized_timer = 0
         self.active = True
         self.active_timer = 0
+        self.internalR = Constants.NODAL_R
 
     def movement(self):
         r = 1
@@ -200,13 +220,22 @@ class Nodal(Agent):
     def tracking_update(self):    
         return    
 
+    def isTouching(self , other:Agent):
+        d = self.model.space.get_distance(self.pos , other.pos)
+        l = d - self.internalR - other.internalR
+        if l <= 0:
+            return True 
+        return False
 
 
-'''Creation of Lefty Agent'''
+
+
 class Lefty(Agent):
+    '''Creation of Lefty Agent'''
 
     def __init__(self, unique_id: int, model: Model) -> None:
         super().__init__(unique_id, model)
+        self.internalR = Constants.LEFTY_R
 
     def movement(self):
         r = 1
@@ -239,7 +268,12 @@ class Lefty(Agent):
     def tracking_update(self):    
         return    
 
-
+    def isTouching(self , other:Agent):
+        d = self.model.space.get_distance(self.pos , other.pos)
+        l = d - self.internalR - other.internalR
+        if l <= 0:
+            return True 
+        return False
 
 
 
