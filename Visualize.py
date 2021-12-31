@@ -1,6 +1,7 @@
 from mesa.agent import Agent
 from mesa.visualization.modules.CanvasContinuousVisualization import CanvasContinuous
 from mesa.visualization.ModularVisualization import ModularServer
+from mesa.visualization.modules.TextVisualization import TextElement
 from StemCellABM import StemCell , Morphogen , Nodal , Lefty , ABM
 import Constants
 
@@ -53,8 +54,33 @@ def agent_portrayal(agent : Agent):
 
 #Create the ContinuousSpace
 space = CanvasContinuous(agent_portrayal , Constants.MAX_X , Constants.MAX_Y , 500 , 500)
+
+displayNumStemCells = TextElement("num_stem_cells")
+displayNumMorph = TextElement("num_morph")
+displaySauce = TextElement("sauce")
+displayNumNodals = TextElement("num_nodals")
+displayLeftys = TextElement("num_leftys")
+displaySpawFreq = TextElement("spawn_freq")
+displayDiffTimer = TextElement("diff_timer")
+displayEndoMin = TextElement("endo_min")
+displayEctoMax = TextElement("ecto_max")
+displayOneCellsContact = TextElement("one_cells_contact")
+displayStartDiff = TextElement("start_diff")
+displayStemCellEx = TextElement("stem_cell_ex")
+displayStemCellExDiff = TextElement("stem_cell_ex_diff")
+displayAvgX = TextElement("avg_x")
+displayAvgY = TextElement("avg_y")
+displayAvgRadius = TextElement("avg_radius")
+
+
 #Create the ModularServer
-server = ModularServer(ABM , [space] , "Stem Cell ABM" , {"num_stem_cells": Constants.NUM_STEM_CELLS , "num_morph": Constants.NUM_MORPH , "sauce": Constants.SAUCE , "num_nodals": Constants.NUM_NODALS , "num_leftys": Constants.NUM_LEFTYS , "spawn_freq": Constants.SPAWN_FREQ , "diff_timer": Constants.DIFF_TIMER , "endo_min": Constants.ENDO_MIN , "ecto_max": Constants.ECTO_MAX , "max_x": Constants.MAX_X , "max_y": Constants.MAX_Y})
+server = ModularServer( ABM , 
+                        [space , displayAvgX , displayAvgY , displayAvgRadius , displayEndoMin , displayEctoMax , displayNumStemCells , displayNumMorph , displaySauce , displayNumNodals , displayLeftys , displaySpawFreq , 
+                        displayDiffTimer ,  displayOneCellsContact , displayStartDiff , displayStemCellEx , 
+                        displayStemCellExDiff] ,
+                         "Stem Cell ABM" , {"num_stem_cells": Constants.NUM_STEM_CELLS , "num_morph": Constants.NUM_MORPH , "sauce": Constants.SAUCE , 
+                         "num_nodals": Constants.NUM_NODALS , "num_leftys": Constants.NUM_LEFTYS , "spawn_freq": Constants.SPAWN_FREQ , "diff_timer": Constants.DIFF_TIMER , 
+                         "endo_min": Constants.ENDO_MIN , "ecto_max": Constants.ECTO_MAX , "max_x": Constants.MAX_X , "max_y": Constants.MAX_Y})
 server.port = 8521
 #Start Server
 server.launch()

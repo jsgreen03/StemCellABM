@@ -2,6 +2,7 @@ from mesa import Model, Agent
 from mesa.time import StagedActivation
 from mesa.datacollection import DataCollector
 from mesa.space import ContinuousSpace
+from mesa.visualization.TextVisualization import TextData
 import math
 import Constants
 
@@ -58,8 +59,10 @@ class ABM(Model):
         for i in range(self.num_stem_cells):
             c = StemCell(i , self)
             self.schedule.add(c)
-            x = self.random.randrange(self.space.x_min , self.space.x_max)
-            y = self.random.randrange(self.space.y_min , self.space.y_max)
+            r = self.random.random() * 3
+            theta = self.random.random() * 2 * math.pi
+            x = r * math.cos(theta) + self.center_pos[0]
+            y = r * math.sin(theta) + self.center_pos[1]
             self.space.place_agent(c , (x , y))
 
         #Add Morphogens to the Space
@@ -79,16 +82,20 @@ class ABM(Model):
         for i in range(self.num_nodals):
             n = Nodal(i + self.num_stem_cells + self.num_morph, self)
             self.schedule.add(n)
-            x = self.random.randrange(self.space.x_min , self.space.x_max)
-            y = self.random.randrange(self.space.y_min , self.space.y_max)
+            r = self.random.random()
+            theta = self.random.random() * 2 * math.pi
+            x = r * math.cos(theta) + self.center_pos[0]
+            y = r * math.sin(theta) + self.center_pos[1]
             self.space.place_agent(n , (x , y))
 
         #Add Leftys to the Space
         for i in range(self.num_leftys):
             l = Lefty(i + self.num_stem_cells + self.num_morph + self.num_nodals, self)
             self.schedule.add(l)
-            x = self.random.randrange(self.space.x_min , self.space.x_max)
-            y = self.random.randrange(self.space.y_min , self.space.y_max)
+            r = self.random.random()
+            theta = self.random.random() * 2 * math.pi
+            x = r * math.cos(theta) + self.center_pos[0]
+            y = r * math.sin(theta) + self.center_pos[1]
             self.space.place_agent(l , (x , y))
 
 
