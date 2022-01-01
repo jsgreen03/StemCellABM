@@ -4,6 +4,7 @@ from mesa.datacollection import DataCollector
 from mesa.space import ContinuousSpace
 from mesa.visualization.TextVisualization import TextData
 import math
+import copy
 import Constants
 
 class ABM(Model):
@@ -50,24 +51,29 @@ class ABM(Model):
         self.running = True
         self.space = ContinuousSpace(max_x , max_y , False , 0 , 0)
         self.center_pos = (max_x/2 , max_y/2)
+        self.currentIDNum = 0
+        self.hasCells = True
         self.setup()
         
         
 
     def setup(self):
         #Add StemCells to the Space
-        for i in range(self.num_stem_cells):
-            c = StemCell(i , self)
-            self.schedule.add(c)
-            r = self.random.random() * 3
-            theta = self.random.random() * 2 * math.pi
-            x = r * math.cos(theta) + self.center_pos[0]
-            y = r * math.sin(theta) + self.center_pos[1]
-            self.space.place_agent(c , (x , y))
+        if self.hasCells == True:
+            for i in range(self.num_stem_cells):
+                self.currentIDNum += 1
+                c = StemCell(self.currentIDNum , self)
+                self.schedule.add(c)
+                r = self.random.random() * 3
+                theta = self.random.random() * 2 * math.pi
+                x = r * math.cos(theta) + self.center_pos[0]
+                y = r * math.sin(theta) + self.center_pos[1]
+                self.space.place_agent(c , (x , y))
 
         #Add Morphogens to the Space
         for i in range(self.num_morph):
-            m = Morphogen(i + self.num_stem_cells, self)
+            self.currentIDNum += 1
+            m = Morphogen(self.currentIDNum, self)
             self.schedule.add(m)
 
             r = self.random.random() * 5
@@ -80,7 +86,8 @@ class ABM(Model):
 
         #Add Nodals to the Space
         for i in range(self.num_nodals):
-            n = Nodal(i + self.num_stem_cells + self.num_morph, self)
+            self.currentIDNum += 1
+            n = Nodal(self.currentIDNum, self)
             self.schedule.add(n)
             r = self.random.random()
             theta = self.random.random() * 2 * math.pi
@@ -90,7 +97,8 @@ class ABM(Model):
 
         #Add Leftys to the Space
         for i in range(self.num_leftys):
-            l = Lefty(i + self.num_stem_cells + self.num_morph + self.num_nodals, self)
+            self.currentIDNum += 1
+            l = Lefty(self.currentIDNum, self)
             self.schedule.add(l)
             r = self.random.random()
             theta = self.random.random() * 2 * math.pi
@@ -98,10 +106,56 @@ class ABM(Model):
             y = r * math.sin(theta) + self.center_pos[1]
             self.space.place_agent(l , (x , y))
 
+        self.calcAvgs()
+
+
+    def calcAvgs(self):
+        x = 0
+        y = 0
+        r = 0
+        for agent in self.space._agent_to_index:
+            if type(agent) == StemCell:
+                x += agent.pos[0]
+                y += agent.pos[1]
+        x = x / self.num_stem_cells
+        y = y / self.num_stem_cells
+        centroid = (x , y)
+        for agent in self.space._agent_to_index:
+            if type(agent) == StemCell:
+                r += self.space.get_distance(centroid , agent.pos)
+        r = r / self.num_stem_cells
+        self.avg_x = x
+        self.avg_y = y
+        self.avg_radius = r
+
+
+    def spawnCells(self):
+        agentDict = copy.deepcopy(self.space._agent_to_index)
+        for agent in agentDict:
+            if type(agent) == StemCell:
+                if agent.energy >= self.spawn_freq:
+                    self.currentIDNum += 1
+                    newCell = StemCell(self.currentIDNum , self)
+                    self.schedule.add(newCell)
+                    self.space.place_agent(newCell , agent.pos)
+                    agent.energy = agent.energy // 2
+                    self.num_stem_cells += 1
+
+
+
+
+
 
 
     def step(self):
+        self.spawnCells()
+        self.calcAvgs()
         self.schedule.step()
+
+    
+
+
+
 
 
 
@@ -115,33 +169,23 @@ class StemCell(Agent):
 
     def __init__(self, unique_id: int, model: Model) -> None:
         super().__init__(unique_id , model)
-        self.differentiated = False
+        self.differentiated = "virgin"
         self.chemical_contact = 0
         self.energy = 0
         self.time_for_diff = 0
-        self.theta = 0
         self.internalR = Constants.STEMCELL_R
 
     def movement(self):
-        r = 1
-        x = self.pos[0]
-        y = self.pos[1]
-        self.theta = self.random.random() * 2 * math.pi
-        x += r * math.cos(self.theta)
-        y += r * math.sin(self.theta)
-        if self.model.space.out_of_bounds((x,y)):
-            if self.model.space.out_of_bounds((-x,-y)):
-                if self.model.space.out_of_bounds((x,-y)):
-                    if self.model.space.out_of_bounds((-x,y)):
-                        pass
-                    else:
-                        self.model.space.move_agent(self , (-x , y))
-                else:
-                    self.model.space.move_agent(self , (x , -y))
-            else:
-                self.model.space.move_agent(self , (-x , -y))
-        else:
-            self.model.space.move_agent(self , (x , y))
+        self.energy += self.random.randrange(0 , 3)
+        hComp = 0
+        vComp = 0
+        for agent in self.model.space._agent_to_index:
+            if type(agent) == Morphogen:
+                dist = self.model.space.get_distance(agent.pos , self.pos)
+                hComp += (agent.pos[0] - self.pos[0]) / (dist ** 2)
+                vComp += (agent.pos[1] - self.pos[1]) / (dist ** 2)
+        norm = (hComp ** 2 + vComp ** 2) ** 0.5
+        self.model.space.move_agent(self , (self.pos[0] + (hComp / norm) , self.pos[1] + (vComp / norm)))
 
     def isTouching(self , other:Agent):
         d = self.model.space.get_distance(self.pos , other.pos)
@@ -149,6 +193,11 @@ class StemCell(Agent):
         if l <= 0:
             return True 
         return False
+
+
+
+
+
 
 
     def reaction_regulation(self):
@@ -159,6 +208,9 @@ class StemCell(Agent):
 
     def tracking_update(self):    
         return    
+
+
+
 
 
 
@@ -197,29 +249,97 @@ class Nodal(Agent):
         self.internalR = Constants.NODAL_R
 
     def movement(self):
-        r = 1
-        x = self.pos[0]
-        y = self.pos[1]
-        self.theta = self.random.random() * 2 * math.pi
-        x += r * math.cos(self.theta)
-        y += r * math.sin(self.theta)
-        if self.model.space.out_of_bounds((x,y)):
-            if self.model.space.out_of_bounds((-x,-y)):
-                if self.model.space.out_of_bounds((x,-y)):
-                    if self.model.space.out_of_bounds((-x,y)):
-                        pass
-                    else:
-                        self.model.space.move_agent(self , (-x , y))
-                else:
-                    self.model.space.move_agent(self , (x , -y))
-            else:
-                self.model.space.move_agent(self , (-x , -y))
+        if self.immobilized == False:
+            heading = self.model.space.get_heading(self.pos , self.model.center_pos)
+            if heading[0] > 0 and heading[1] > 0:
+                if self.random.randrange(0 , 2) < 1: #Vertical Shift
+
+                    x = heading[0]
+                    y = self.random.uniform(-heading[0] , heading[1])
+
+                else: #Horizontal Shift
+
+                    x = self.random.uniform(-heading[1] , heading[0])
+                    y = heading[1]
+
+            elif heading[0] < 0 and heading[1] < 0:
+
+                if self.random.randrange(0 , 2) < 1: #Vertical Shift
+
+                    x = heading[0]
+                    y = self.random.uniform(heading[1] , -heading[0])
+
+                else: #Horizontal Shift
+
+                    x = self.random.uniform(heading[0] , -heading[1])
+                    y = heading[1]
+
+            elif heading[0] < 0 and heading[1] > 0:
+
+                if self.random.randrange(0 , 2) < 1: #Vertical Shift
+
+                    x = heading[0]
+                    y = self.random.uniform(heading[0] , heading[1])
+
+                else: #Horizontal Shift
+
+                    x = self.random.uniform(heading[0] , heading[1])
+                    y = heading[1]
+
+            elif heading[0] > 0 and heading[1] < 0:
+
+                if self.random.randrange(0 , 2) < 1: #Vertical Shift
+
+                    x = heading[0]
+                    y = self.random.uniform(heading[1] , heading[0])
+
+                else: #Horizontal Shift
+
+                    x = self.random.uniform(heading[1] , heading[0])
+                    y = heading[1]
+
+            elif heading == (0,0):
+                
+                x = 1
+                y = 1
+
+
+            norm = (x ** 2 + y ** 2) ** 0.5
+            xDisplacement = x / (norm * 3)
+            yDisplacement = y / (norm * 3)
+            
+            self.model.space.move_agent(self , (self.pos[0] + xDisplacement , self.pos[1] + yDisplacement))
+            for agent in self.model.space._agent_to_index:
+                if type(agent) == StemCell:
+                    if self.isTouching(agent):
+                        xDisplacement = -xDisplacement / 2
+                        yDisplacement = -yDisplacement / 2
+            self.model.space.move_agent(self , (self.pos[0] + xDisplacement , self.pos[1] + yDisplacement))
+            if self.random.randrange(0 , 100) < 49:
+                self.immobilized = True
+                self.immobilized_timer = self.random.randrange(0 , 11)
         else:
-            self.model.space.move_agent(self , (x , y))
+            self.immobilized_timer -= 1
+            if self.immobilized_timer == 0:
+                self.immobilized = False
+            
+            
 
 
     def reaction_regulation(self):
-        return
+        if self.active_timer == 0:
+            for agent in self.model.space._agent_to_index:
+                if type(agent) == Lefty:
+                    if self.isTouching(agent):
+                        self.active = False
+                        self.active_timer = self.random.randrange(0 , 11)
+        else:
+            self.active_timer -= 1
+            if self.active_timer == 0:
+                self.active = True
+
+
+
 
     def differentiation_tick(self):
         return
@@ -245,25 +365,66 @@ class Lefty(Agent):
         self.internalR = Constants.LEFTY_R
 
     def movement(self):
-        r = 1
-        x = self.pos[0]
-        y = self.pos[1]
-        self.theta = self.random.random() * 2 * math.pi
-        x += r * math.cos(self.theta)
-        y += r * math.sin(self.theta)
-        if self.model.space.out_of_bounds((x,y)):
-            if self.model.space.out_of_bounds((-x,-y)):
-                if self.model.space.out_of_bounds((x,-y)):
-                    if self.model.space.out_of_bounds((-x,y)):
-                        pass
-                    else:
-                        self.model.space.move_agent(self , (-x , y))
-                else:
-                    self.model.space.move_agent(self , (x , -y))
-            else:
-                self.model.space.move_agent(self , (-x , -y))
-        else:
-            self.model.space.move_agent(self , (x , y))
+            heading = self.model.space.get_heading(self.pos , self.model.center_pos)
+            if heading[0] > 0 and heading[1] > 0:
+                if self.random.randrange(0 , 2) < 1: #Vertical Shift
+
+                    x = heading[0]
+                    y = self.random.uniform(-heading[0] , heading[1])
+
+                else: #Horizontal Shift
+
+                    x = self.random.uniform(-heading[1] , heading[0])
+                    y = heading[1]
+
+            elif heading[0] < 0 and heading[1] < 0:
+
+                if self.random.randrange(0 , 2) < 1: #Vertical Shift
+
+                    x = heading[0]
+                    y = self.random.uniform(heading[1] , -heading[0])
+
+                else: #Horizontal Shift
+
+                    x = self.random.uniform(heading[0] , -heading[1])
+                    y = heading[1]
+
+            elif heading[0] < 0 and heading[1] > 0:
+
+                if self.random.randrange(0 , 2) < 1: #Vertical Shift
+
+                    x = heading[0]
+                    y = self.random.uniform(heading[0] , heading[1])
+
+                else: #Horizontal Shift
+
+                    x = self.random.uniform(heading[0] , heading[1])
+                    y = heading[1]
+
+            elif heading[0] > 0 and heading[1] < 0:
+
+                if self.random.randrange(0 , 2) < 1: #Vertical Shift
+
+                    x = heading[0]
+                    y = self.random.uniform(heading[1] , heading[0])
+
+                else: #Horizontal Shift
+
+                    x = self.random.uniform(heading[1] , heading[0])
+                    y = heading[1]
+
+            elif heading == (0,0):
+
+                x = 1
+                y = 1
+
+
+            norm = (x ** 2 + y ** 2) ** 0.5
+            xDisplacement = x / (norm * 0.5)
+            yDisplacement = y / (norm * 0.5)
+            
+            self.model.space.move_agent(self , (self.pos[0] + xDisplacement , self.pos[1] + yDisplacement))
+
 
 
     def reaction_regulation(self):

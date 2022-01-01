@@ -13,17 +13,31 @@ def agent_portrayal(agent : Agent):
         Currently, I am using small circles for all with different colors to distinguish between agents
 
         Colors:
-            StemCell = Black
+            StemCell = Black* 
             Morphogen = Orange
             Nodal = Blue
-            Lefty = Purple"""
+            Lefty = Purple
+            
+            *Differentiated StemCells have color dependent on their classification:
+                endo: Blue
+                meso: Green
+                ecto: Red 
+            """
 
     if agent.__class__ == StemCell:
+        if agent.differentiated == "virgin":
+            color = "black"
+        elif agent.differentiated == "endo":
+            color = "blue"
+        elif agent.differentiated == "meso":
+            color = "green"
+        elif agent.differentiated == "ecto":
+            color = "red"
         portrayal = {
             "Shape" : "circle",
             "Filled" : "true",
             "r" : Constants.STEMCELL_R,
-            "Color" : "black",
+            "Color" : color,
             "Layer" : 1
         }
     elif agent.__class__ == Morphogen:
@@ -55,6 +69,7 @@ def agent_portrayal(agent : Agent):
 #Create the ContinuousSpace
 space = CanvasContinuous(agent_portrayal , Constants.MAX_X , Constants.MAX_Y , 500 , 500)
 
+#Create TextElements for Model Paramaters
 displayNumStemCells = TextElement("num_stem_cells")
 displayNumMorph = TextElement("num_morph")
 displaySauce = TextElement("sauce")

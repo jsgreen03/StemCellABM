@@ -1,0 +1,4 @@
+VisualElement Features to Add
+    - Add button features to hide certain cells
+    - Add pen tracking for a specific cell to track path of movement
+    
