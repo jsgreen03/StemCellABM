@@ -1,5 +1,5 @@
 from mesa import Model, Agent
-from mesa.time import StagedActivation
+from mesa.time import BaseScheduler, StagedActivation
 from mesa.datacollection import DataCollector
 from mesa.space import ContinuousSpace
 from mesa.visualization.TextVisualization import TextData
@@ -43,16 +43,16 @@ class ABM(Model):
         self.one_cells_contact = 0
         self.start_diff = False
         self.stem_cell_ex = None
-        self.stem_cell_ex_diff = False
+        self.stem_cell_ex_diff = None
         self.avg_x = 0
         self.avg_y = 0
         self.avg_radius = 0
-        self.schedule = StagedActivation(self , ["movement" , "reaction_regulation" , "differentiation_tick" , "tracking_update"])
+        self.schedule = BaseScheduler(self)
         self.running = True
         self.space = ContinuousSpace(max_x , max_y , False , 0 , 0)
-        self.center_pos = (max_x/2 , max_y/2)
+        self.center_pos = self.space.center
         self.currentIDNum = 0
-        self.hasCells = True
+        self.hasCells = True#False
         self.setup()
         
         
@@ -69,6 +69,11 @@ class ABM(Model):
                 x = r * math.cos(theta) + self.center_pos[0]
                 y = r * math.sin(theta) + self.center_pos[1]
                 self.space.place_agent(c , (x , y))
+            self.stem_cell_ex = self.space._index_to_agent[self.random.randrange(0 , len(self.space._agent_points))]
+            self.stem_cell_ex_diff = self.stem_cell_ex.differentiated
+
+
+            
 
         #Add Morphogens to the Space
         for i in range(self.num_morph):
@@ -76,7 +81,7 @@ class ABM(Model):
             m = Morphogen(self.currentIDNum, self)
             self.schedule.add(m)
 
-            r = self.random.random() * 5
+            r = self.random.random() * 3
             theta = self.random.random() * 2 * math.pi
             x = r * math.cos(theta) + self.center_pos[0]
             y = r * math.sin(theta) + self.center_pos[1]
@@ -140,6 +145,31 @@ class ABM(Model):
                     self.space.place_agent(newCell , agent.pos)
                     agent.energy = agent.energy // 2
                     self.num_stem_cells += 1
+    
+
+    def cascade(self):
+        for agent in self.space._agent_to_index:
+            if type(agent) == StemCell:
+                neighbors = self.space.get_neighbors(agent.pos , agent.internalR , True)
+                for neighbor in neighbors:
+                    if type(neighbor) == StemCell and neighbor.differentiated != "virgin":
+                        agent.differentiated = neighbor.differentiated
+                        agent.time_for_diff = 0
+                 #       if agent.chemical_contact < agent.model.endo_min and agent.chemical_contact >= agent.model.ecto_max:
+                  #          agent.differentiated = "meso"
+                   #     if agent.chemical_contact < agent.model.ecto_max:
+                    #        agent.differentiated = "ecto"
+
+
+    def updateParams(self):
+        agents = self.space._agent_to_index.keys()
+        StemCells = [x for x in agents if type(x) == StemCell]
+        c = StemCells[self.random.randrange(0 , len(StemCells))]
+        self.one_cells_contact = c.chemical_contact
+        self.stem_cell_ex_diff = self.stem_cell_ex.differentiated
+
+
+
 
 
 
@@ -150,6 +180,9 @@ class ABM(Model):
     def step(self):
         self.spawnCells()
         self.calcAvgs()
+        self.updateParams()
+        if self.start_diff == True:
+            self.cascade()
         self.schedule.step()
 
     
@@ -172,8 +205,15 @@ class StemCell(Agent):
         self.differentiated = "virgin"
         self.chemical_contact = 0
         self.energy = 0
-        self.time_for_diff = 0
+        self.time_for_diff = self.random.randrange(Constants.TIME_FOR_DIFF_UPPER - 10 , Constants.TIME_FOR_DIFF_UPPER + 1)
         self.internalR = Constants.STEMCELL_R
+
+
+    def step(self):
+        self.movement()
+        self.differentiation_tick()
+
+
 
     def movement(self):
         self.energy += self.random.randrange(0 , 3)
@@ -181,11 +221,33 @@ class StemCell(Agent):
         vComp = 0
         for agent in self.model.space._agent_to_index:
             if type(agent) == Morphogen:
-                dist = self.model.space.get_distance(agent.pos , self.pos)
-                hComp += (agent.pos[0] - self.pos[0]) / (dist ** 2)
-                vComp += (agent.pos[1] - self.pos[1]) / (dist ** 2)
-        norm = (hComp ** 2 + vComp ** 2) ** 0.5
-        self.model.space.move_agent(self , (self.pos[0] + (hComp / norm) , self.pos[1] + (vComp / norm)))
+                h = (agent.pos[0] - self.pos[0])
+                v = (agent.pos[1] - self.pos[1])
+                n = (h ** 2 + v ** 2) ** (0.5)
+                hComp += h/n
+                vComp += v/n
+        norm = (hComp ** 2 + vComp ** 2) ** (0.5)
+        newPos = (self.pos[0] + (hComp / norm) , self.pos[1] + (vComp / norm))
+
+        head =  self.model.space.get_heading((self.model.avg_x , self.model.avg_y) , newPos)
+        headMag = (head[0] ** 2 + head[1] ** 2) ** (0.5)
+        newPos = (newPos[0] + head[0]/(1.5*headMag) , newPos[1] + head[1]/(1.5*headMag)) 
+
+
+
+        self.model.space.move_agent(self , newPos)
+
+
+    def isTouchingOtherCells(self , point):
+        d = self.model.space.get_distance(self.pos , point)
+        l = d - (2*self.internalR)
+        if l <= 0:
+            return True 
+        return False
+        
+
+
+
 
     def isTouching(self , other:Agent):
         d = self.model.space.get_distance(self.pos , other.pos)
@@ -204,6 +266,26 @@ class StemCell(Agent):
         return
 
     def differentiation_tick(self):
+        if self.time_for_diff > 0:
+            self.time_for_diff -= 1
+            touchingNodal = 0
+            for agent in self.model.space._agent_to_index:
+                if type(agent) == Nodal and agent.active == True:
+                    if self.isTouching(agent):
+                        touchingNodal += 1
+            self.chemical_contact += touchingNodal
+        else:
+            if self.differentiated == "virgin":
+                if self.model.start_diff == False:
+                    self.model.start_diff = True
+                if self.chemical_contact >= self.model.endo_min:
+                    self.differentiated = "endo"
+                if self.chemical_contact < self.model.endo_min and self.chemical_contact >= self.model.ecto_max:
+                    self.differentiated = "meso"
+                if self.chemical_contact < self.model.ecto_max:
+                    self.differentiated = "ecto"
+                
+
         return
 
     def tracking_update(self):    
@@ -222,17 +304,8 @@ class Morphogen(Agent):
         super().__init__(unique_id, model)
         self.internalR = Constants.MORPHOGEN_R
 
-    def movement(self):
+    def step(self):
         return
-
-    def reaction_regulation(self):
-        return
-
-    def differentiation_tick(self):
-        return
-
-    def tracking_update(self):    
-        return    
     
 
 
@@ -247,6 +320,11 @@ class Nodal(Agent):
         self.active = True
         self.active_timer = 0
         self.internalR = Constants.NODAL_R
+
+    def step(self):
+        self.movement()
+        self.reaction_regulation()
+
 
     def movement(self):
         if self.immobilized == False:
@@ -339,13 +417,7 @@ class Nodal(Agent):
                 self.active = True
 
 
-
-
-    def differentiation_tick(self):
-        return
-
-    def tracking_update(self):    
-        return    
+ 
 
     def isTouching(self , other:Agent):
         d = self.model.space.get_distance(self.pos , other.pos)
@@ -363,6 +435,11 @@ class Lefty(Agent):
     def __init__(self, unique_id: int, model: Model) -> None:
         super().__init__(unique_id, model)
         self.internalR = Constants.LEFTY_R
+
+
+    def step(self):
+        self.movement()
+
 
     def movement(self):
             heading = self.model.space.get_heading(self.pos , self.model.center_pos)
@@ -425,16 +502,6 @@ class Lefty(Agent):
             
             self.model.space.move_agent(self , (self.pos[0] + xDisplacement , self.pos[1] + yDisplacement))
 
-
-
-    def reaction_regulation(self):
-        return
-
-    def differentiation_tick(self):
-        return
-
-    def tracking_update(self):    
-        return    
 
     def isTouching(self , other:Agent):
         d = self.model.space.get_distance(self.pos , other.pos)
