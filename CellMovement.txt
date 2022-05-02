@@ -1,0 +1,92 @@
+OLD:
+    def movement(self):
+        scaleFactor = 25
+        self.energy += self.random.randrange(0 , 3)
+        if self.differentiated == "virgin":
+            hComp = 0
+            vComp = 0
+            for agent in self.model.space._agent_to_index:
+                if type(agent) == Morphogen:
+                    head0 = self.model.space.get_heading(self.pos , agent.pos)
+                    h = head0[0]
+                    v = head0[1]
+                    n = (h ** 2 + v ** 2)
+                    hComp += h/n
+                    vComp += v/n
+            norm = scaleFactor * .5 * (hComp ** 2 + vComp ** 2) ** (0.5)
+            newPos = (self.pos[0] + (hComp/norm) , self.pos[1] + (vComp/norm))
+            if len(self.model.cellTouchingDict[self.unique_id]) < 5 and len(self.model.cellTouchingDict[self.unique_id]) != 0:
+                neighbors = self.model.cellTouchingDict[self.unique_id]
+                hNeigh = 0
+                vNeigh = 0
+                for neighbor in neighbors:
+                    head2 = self.model.space.get_heading(newPos , neighbor.pos)
+                    hNeigh += head2[0]
+                    vNeigh += head2[1]
+                normNeigh = scaleFactor * 20 *(hNeigh ** 2 + vNeigh ** 2) ** (0.5)
+                newPos = (newPos[0] + hNeigh/(normNeigh) , newPos[1] + vNeigh/(normNeigh))
+
+                head =  self.model.space.get_heading(newPos , (self.model.avg_x , self.model.avg_y))
+                headMag = scaleFactor * 0.62*(head[0] ** 2 + head[1] ** 2) ** (0.5)
+                newPos = (newPos[0] + head[0]/(headMag) , newPos[1] + head[1]/(headMag))
+            else:
+                if len(self.model.cellTouchingDict[self.unique_id]) != 0:
+                    neighbors = self.model.cellTouchingDict[self.unique_id]
+                    hNeigh = 0
+                    vNeigh = 0
+                    for neighbor in neighbors:
+                        head2 = self.model.space.get_heading(neighbor.pos , newPos)
+                        hNeigh += head2[0]
+                        vNeigh += head2[1]
+                    normNeigh = scaleFactor * .1*(hNeigh ** 2 + vNeigh ** 2) ** (0.5)
+                    newPos = (newPos[0] + hNeigh/(normNeigh) , newPos[1] + vNeigh/(normNeigh))
+                    
+            self.model.space.move_agent(self , newPos)
+
+NEW:
+def movement(self):
+        scaleFactor = 1
+        self.energy += self.random.randrange(0 , 3)
+        if self.differentiated == "virgin":
+            neighbors = self.model.cellTouchingDict[self.unique_id]
+            neighborPoints = []
+            for neighbor in neighbors:
+                neighborPoints.append(self.intersectingPoints(neighbor))
+            polarNeighborPoints = []
+            for intersection in neighborPoints:
+                newInter = self.convertIntersectingPointsPolar(intersection)
+                polarNeighborPoints.append(newInter)
+            nSets = []
+            for intersection in polarNeighborPoints:
+                nSets.append(SetRange(intersection[0][1] , intersection[1][1] , True))
+            neighborSet = SetRangeUnion(nSets)
+            r = neighborSet.getRange()
+            thetas0 = neighborSet.getPoints()
+            thetas = []
+            for pTuple in thetas0:
+                thetas.append(pTuple[0])
+                thetas.append(pTuple[1])
+            hComp = 0
+            vComp = 0
+            for agent in self.model.space._agent_to_index:
+                if type(agent) == Morphogen:
+                    head0 = self.model.space.get_heading(self.pos , agent.pos)
+                    h = head0[0]
+                    v = head0[1]
+                    n = (h ** 2 + v ** 2) ** 0.5
+                    zpChange = (h * self.internalR / n , v * self.internalR / n)
+                    zeroPoint = (self.pos[0] + (zpChange[0]) , self.pos[1] + (zpChange[1]))
+                    zpAngle = self.determineAngle(zeroPoint)
+                    if not neighborSet.numInRange(zpAngle):
+                        zpAngle = self.getMinDistanceAlongCircumference(zpAngle , thetas)
+                    x = self.internalR * math.cos(zpAngle)
+                    y = self.internalR * math.sin(zpAngle)
+                    head1 = self.model.space.get_heading((x,y) , agent.pos)
+                    head1 = (head1[0] *(r/(2*math.pi)) , head1[1] *(r/(2*math.pi)))
+                    hComp += head1[0]
+                    vComp += head1[1]
+            norm = scaleFactor * .5 * (hComp ** 2 + vComp ** 2) ** (0.5)
+            newPos = (self.pos[0] + (hComp/norm) , self.pos[1] + (vComp/norm))
+            self.model.cellTouchingDict[self.unique_id]
+                    
+            self.model.space.move_agent(self , newPos)

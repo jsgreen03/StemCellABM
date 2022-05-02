@@ -1,3 +1,6 @@
+
+from typing import DefaultDict
+from matplotlib.pyplot import sca
 from mesa import Model, Agent
 from mesa.time import BaseScheduler, StagedActivation
 from mesa.datacollection import DataCollector
@@ -12,7 +15,6 @@ class ABM(Model):
         Stages of Model Per Tick: "movement" , "reaction_regulation" , "differentiation_tick" , "tracking_update"
         Global Variables:
             num_stem_cells : Int
-            num_morph : Int
             sauce : Boolean : True if model will measure cell differentiation after a certain diff_timer elapses
             num_nodals : Int
             num_leftys : Int
@@ -30,9 +32,8 @@ class ABM(Model):
             schedule : StagedActivation : Staged Activation Schedule that Follows the Stages listed above
             running : True : Batch will continually run this model's steps indefinitely'''
 
-    def __init__(self, num_stem_cells: int , num_morph: int , sauce: bool , num_nodals: int , num_leftys: int , spawn_freq: int , diff_timer: int , endo_min: int , ecto_max: int , max_x:int=20 , max_y:int=20) -> None:
+    def __init__(self, num_stem_cells: int , sauce: bool , num_nodals: int , num_leftys: int , spawn_freq: int , diff_timer: int , endo_min: int , ecto_max: int , max_x:int=20 , max_y:int=20) -> None:
         self.num_stem_cells = num_stem_cells
-        self.num_morph = num_morph
         self.sauce = sauce
         self.num_nodals = num_nodals
         self.num_leftys = num_leftys
@@ -52,7 +53,17 @@ class ABM(Model):
         self.space = ContinuousSpace(max_x , max_y , False , 0 , 0)
         self.center_pos = self.space.center
         self.currentIDNum = 0
-        self.hasCells = True#False
+        self.hasCells = True
+        self.cellTouchingDict = {}
+        for i in range(1 , Constants.NUM_STEM_CELLS + 1):
+            self.cellTouchingDict[i] = []
+        self.end_time = 0
+        self.mConcX = 0
+        self.mConcY = 0
+        self.mR = 0
+        self.cells = []
+        self.leftys = []
+        self.nodals = []
         self.setup()
         
         
@@ -64,29 +75,15 @@ class ABM(Model):
                 self.currentIDNum += 1
                 c = StemCell(self.currentIDNum , self)
                 self.schedule.add(c)
-                r = self.random.random() * 3
+                r = self.random.random() * 1
                 theta = self.random.random() * 2 * math.pi
                 x = r * math.cos(theta) + self.center_pos[0]
                 y = r * math.sin(theta) + self.center_pos[1]
                 self.space.place_agent(c , (x , y))
+                self.cells.append(c)
             self.stem_cell_ex = self.space._index_to_agent[self.random.randrange(0 , len(self.space._agent_points))]
             self.stem_cell_ex_diff = self.stem_cell_ex.differentiated
 
-
-            
-
-        #Add Morphogens to the Space
-        for i in range(self.num_morph):
-            self.currentIDNum += 1
-            m = Morphogen(self.currentIDNum, self)
-            self.schedule.add(m)
-
-            r = self.random.random() * 3
-            theta = self.random.random() * 2 * math.pi
-            x = r * math.cos(theta) + self.center_pos[0]
-            y = r * math.sin(theta) + self.center_pos[1]
-            
-            self.space.place_agent(m , (x , y))
 
 
         #Add Nodals to the Space
@@ -100,6 +97,8 @@ class ABM(Model):
             y = r * math.sin(theta) + self.center_pos[1]
             self.space.place_agent(n , (x , y))
 
+            self.nodals.append(n)
+
         #Add Leftys to the Space
         for i in range(self.num_leftys):
             self.currentIDNum += 1
@@ -110,6 +109,8 @@ class ABM(Model):
             x = r * math.cos(theta) + self.center_pos[0]
             y = r * math.sin(theta) + self.center_pos[1]
             self.space.place_agent(l , (x , y))
+
+            self.leftys.append(l)
 
         self.calcAvgs()
 
@@ -122,6 +123,8 @@ class ABM(Model):
             if type(agent) == StemCell:
                 x += agent.pos[0]
                 y += agent.pos[1]
+           
+
         x = x / self.num_stem_cells
         y = y / self.num_stem_cells
         centroid = (x , y)
@@ -134,17 +137,8 @@ class ABM(Model):
         self.avg_radius = r
 
 
-    def spawnCells(self):
-        agentDict = copy.deepcopy(self.space._agent_to_index)
-        for agent in agentDict:
-            if type(agent) == StemCell:
-                if agent.energy >= self.spawn_freq:
-                    self.currentIDNum += 1
-                    newCell = StemCell(self.currentIDNum , self)
-                    self.schedule.add(newCell)
-                    self.space.place_agent(newCell , agent.pos)
-                    agent.energy = agent.energy // 2
-                    self.num_stem_cells += 1
+
+   
     
 
     def cascade(self):
@@ -152,13 +146,11 @@ class ABM(Model):
             if type(agent) == StemCell:
                 neighbors = self.space.get_neighbors(agent.pos , agent.internalR , True)
                 for neighbor in neighbors:
-                    if type(neighbor) == StemCell and neighbor.differentiated != "virgin":
-                        agent.differentiated = neighbor.differentiated
-                        agent.time_for_diff = 0
-                 #       if agent.chemical_contact < agent.model.endo_min and agent.chemical_contact >= agent.model.ecto_max:
-                  #          agent.differentiated = "meso"
-                   #     if agent.chemical_contact < agent.model.ecto_max:
-                    #        agent.differentiated = "ecto"
+                    if type(neighbor) == StemCell and neighbor.differentiated == "virgin":
+                        if self.random.random() > 0.1:
+                            agent.differentiated = neighbor.differentiated
+                            agent.time_for_diff = 0
+
 
 
     def updateParams(self):
@@ -170,20 +162,39 @@ class ABM(Model):
 
 
 
+    def updateTouchingDict(self):
+        #self.cellTouchingDict
+        for key in self.cellTouchingDict.keys():
+            self.cellTouchingDict[key] = []
 
+        for agent in self.space._agent_to_index:
 
+                if type(agent) == StemCell:
+             
+                    neighbors = self.space.get_neighbors(agent.pos , agent.internalR -.01 , include_center=False)
+                    for neighbor in neighbors:
+                        if type(neighbor) == StemCell:
+                            if neighbor not in self.cellTouchingDict[agent.unique_id]:
+                                self.cellTouchingDict[agent.unique_id].append(neighbor)
+                            if agent not in self.cellTouchingDict[neighbor.unique_id]:
+                                self.cellTouchingDict[neighbor.unique_id].append(agent)
+                      
 
-
-
-
+   
 
     def step(self):
-        self.spawnCells()
         self.calcAvgs()
-        self.updateParams()
+        if self.hasCells:
+            self.updateParams()
+            self.updateTouchingDict()
         if self.start_diff == True:
             self.cascade()
+            if self.end_time == -2:
+                self.end_time = 3
+            self.end_time -= 1
         self.schedule.step()
+        if self.end_time == -1 and self.start_diff == True:
+            self.running = False
 
     
 
@@ -207,36 +218,143 @@ class StemCell(Agent):
         self.energy = 0
         self.time_for_diff = self.random.randrange(Constants.TIME_FOR_DIFF_UPPER - 10 , Constants.TIME_FOR_DIFF_UPPER + 1)
         self.internalR = Constants.STEMCELL_R
+        self.absorbed = False
 
 
     def step(self):
-        self.movement()
-        self.differentiation_tick()
+        self.spawnCells()
+        self.movement2()
+        if self.model.sauce == True:
+            self.differentiation_tick()
 
+    def movement2(self):
+        scaleFactor = 1
+        self.energy += self.random.randrange(0 , 3)
+        if self.differentiated == "virgin":
+            neighbors = self.model.cellTouchingDict[self.unique_id]
+            neighborPoints = []
+            for neighbor in neighbors:
+                points = self.intersectingPoints(neighbor)
+                if points[0] != self.pos:
+                    neighborPoints.append(points)
+            polarNeighborPoints = []
+            for intersection in neighborPoints:
+                newInter = self.convertIntersectingPointsPolar(intersection)
+                polarNeighborPoints.append(newInter)
+            nSets = []
+            for intersection in polarNeighborPoints:
+                nSets.append(SetRange(intersection[0][1] , intersection[1][1] , True , intersection[1]))
+            neighborSet = SetRangeUnion(nSets)
+            r = neighborSet.getRange()
+            thetas0 = neighborSet.getPoints()
+            thetas = []
+            for pTuple in thetas0:
+                thetas.append(pTuple[0])
+                thetas.append(pTuple[1])
+            zpAngle = self.model.random.random() * math.pi * 2
+            if zpAngle < (math.pi / 2) or zpAngle > (3 * math.pi / 2):
+                l = True
+            else:
+                l = False
+            zpRange = SetRange(zpAngle + math.pi / 2 , zpAngle - math.pi / 2 , True , l)
+            x = 0
+            y = 0
+            noThetas = True
+            for theta in thetas:
+                if zpRange.numInRange(theta):
+                    noThetas = False
+            if not noThetas:
+                if neighborSet.numInRange(zpAngle):
+                    zpAngle = self.getMinDistanceAlongCircumference(zpAngle , thetas)
+                x = self.internalR * math.cos(zpAngle)
+                y = self.internalR * math.sin(zpAngle)
+            head1 = self.model.space.get_heading(self.pos , (self.pos[0] + x, self.pos[1] + y))
+            head1 = (head1[0] *(((2*math.pi)-r)/(2*math.pi)) , head1[1]*(((2*math.pi)-r)/(2*math.pi)))
+            h = head1[0]
+            v = head1[1]
+            norm = scaleFactor * (h ** 2 + v ** 2) ** (0.5)
+            if h == 0 and v == 0:
+                norm = 1
+            newPos = (self.pos[0] + (h/norm) , self.pos[1] + (v/norm))              
+            self.model.space.move_agent(self , newPos)
+
+
+
+
+
+    def spawnCells(self):
+        if self.energy >= self.model.spawn_freq:
+            self.model.currentIDNum += 1
+            newCell = StemCell(self.model.currentIDNum , self.model)
+            self.model.schedule.add(newCell)
+            self.model.space.place_agent(newCell , self.pos)
+            self.energy = self.energy // 2
+            self.model.num_stem_cells += 1
+            self.model.cellTouchingDict[self.model.currentIDNum] = []
+            self.model.cells.append(newCell)
 
 
     def movement(self):
+        scaleFactor = 0.9
         self.energy += self.random.randrange(0 , 3)
-        hComp = 0
-        vComp = 0
-        for agent in self.model.space._agent_to_index:
-            if type(agent) == Morphogen:
-                h = (agent.pos[0] - self.pos[0])
-                v = (agent.pos[1] - self.pos[1])
-                n = (h ** 2 + v ** 2) ** (0.5)
-                hComp += h/n
-                vComp += v/n
-        norm = (hComp ** 2 + vComp ** 2) ** (0.5)
-        newPos = (self.pos[0] + (hComp / norm) , self.pos[1] + (vComp / norm))
-
-        head =  self.model.space.get_heading((self.model.avg_x , self.model.avg_y) , newPos)
-        headMag = (head[0] ** 2 + head[1] ** 2) ** (0.5)
-        newPos = (newPos[0] + head[0]/(1.5*headMag) , newPos[1] + head[1]/(1.5*headMag)) 
-
-
-
-        self.model.space.move_agent(self , newPos)
-
+        if self.differentiated == "virgin":
+            neighbors = self.model.cellTouchingDict[self.unique_id]
+            neighborPoints = []
+            for neighbor in neighbors:
+                points = self.intersectingPoints(neighbor)
+                if points[0] != self.pos:
+                    neighborPoints.append(points)
+            polarNeighborPoints = []
+            for intersection in neighborPoints:
+                newInter = self.convertIntersectingPointsPolar(intersection)
+                polarNeighborPoints.append(newInter)
+            nSets = []
+            for intersection in polarNeighborPoints:
+                nSets.append(SetRange(intersection[0][1] , intersection[1][1] , True , intersection[1]))
+            neighborSet = SetRangeUnion(nSets)
+            r = neighborSet.getRange()
+            thetas0 = neighborSet.getPoints()
+            thetas = []
+            for pTuple in thetas0:
+                thetas.append(pTuple[0])
+                thetas.append(pTuple[1])
+            hComp = 0
+            vComp = 0
+            for agent in self.model.morphs:
+                if agent.dead == False:
+                    head0 = self.model.space.get_heading(self.pos , agent.pos)
+                    h = head0[0]
+                    v = head0[1]
+                    n = (h ** 2 + v ** 2) ** 0.5
+                    zpChange = (h * self.internalR / n , v * self.internalR / n)
+                    zeroPoint = (self.pos[0] + (zpChange[0]) , self.pos[1] + (zpChange[1]))
+                    zpAngle = self.determineAngle(zeroPoint)
+                    if zpAngle < (math.pi / 2) or zpAngle > (3 * math.pi / 2):
+                        l = True
+                    else:
+                        l = False
+                    zpRange = SetRange(zpAngle + math.pi / 2 , zpAngle - math.pi / 2 , True , l)
+                    x = 0
+                    y = 0
+                    noThetas = True
+                    for theta in thetas:
+                        if zpRange.numInRange(theta):
+                            noThetas = False
+                    if not noThetas:
+                        if neighborSet.numInRange(zpAngle):
+                            zpAngle = self.getMinDistanceAlongCircumference(zpAngle , thetas)
+                        x = self.internalR * math.cos(zpAngle)
+                        y = self.internalR * math.sin(zpAngle)
+                    head1 = self.model.space.get_heading(self.pos , (self.pos[0] + x, self.pos[1] + y))
+                    head1 = (head1[0] *(((2*math.pi)-r)/(2*math.pi)) , head1[1]*(((2*math.pi)-r)/(2*math.pi)))
+                    hComp += head1[0]
+                    vComp += head1[1]
+            norm = scaleFactor * (hComp ** 2 + vComp ** 2) ** (0.5)
+            if hComp == 0 and vComp == 0:
+                norm = 1
+            newPos = (self.pos[0] + (hComp/norm) , self.pos[1] + (vComp/norm))              
+            self.model.space.move_agent(self , newPos)
+    
 
     def isTouchingOtherCells(self , point):
         d = self.model.space.get_distance(self.pos , point)
@@ -244,10 +362,6 @@ class StemCell(Agent):
         if l <= 0:
             return True 
         return False
-        
-
-
-
 
     def isTouching(self , other:Agent):
         d = self.model.space.get_distance(self.pos , other.pos)
@@ -255,12 +369,6 @@ class StemCell(Agent):
         if l <= 0:
             return True 
         return False
-
-
-
-
-
-
 
     def reaction_regulation(self):
         return
@@ -286,28 +394,191 @@ class StemCell(Agent):
                     self.differentiated = "ecto"
                 
 
-        return
 
     def tracking_update(self):    
         return    
 
+    def intersectingPoints(self , other):
+        a = self.pos[0]
+        b = self.pos[1]
+        c = other.pos[0]
+        d = other.pos[1]
+        r = self.internalR
+        D = ((a-c)**2 + (b-d)**2)**0.5
+        if d == b:
+            x1 = min(a,c) + r * ( (2)**0.5 / 2)
+            x2 = x1
+            y1 = ((r)**2 - (r * ( (2)**0.5 / 2))**2) ** 0.5
+            y2 = -1 * y1
+        else:
+            if D > 2*self.internalR:
+                return [(self.pos[0] , self.pos[1])]
+            E = (r**2 - (D/2)**2)**0.5
+            M = (c-a)/(b-d)
+            B = (b**2 - d**2)/(c**2 - a**2)
+            theta = math.atan2(c-a , b-d)
+            midX = (a+c)/2
+            midY = (b+d)/2
+            dist = E * math.cos(theta)
+            x2 = midX + dist
+            y2 = M*x2 + B
+            x1 = midX - dist
+            y1 = M*x1 + B
+        val = False
+        head = self.model.space.get_heading(self.pos , other.pos)
+        if head[0] > 0 and b > min(y2,y1) and b < max(y2,y1):
+            val = True            
+        return [(x1,y1) , (x2,y2) , val]
+
+    def convertIntersectingPointsPolar(self, points):
+        polarCoords = []
+       
+        p = (points[0] , points[1])
+        polar0 = [self.internalR]
+        polar1 = [self.internalR]
+        polar0.append(self.determineAngle(p[0]))
+        polar1.append(self.determineAngle(p[1]))
+
+        polarCoords.append(tuple(polar0))
+        polarCoords.append(tuple(polar1))
+
+        polarCoords.append(points[2])
+        return polarCoords
+
+    def determineAngle(self, point):
+        radius = self.internalR
+        center = self.pos
+        if point == (center[0] , center[1] + radius):
+            angle = math.pi / 2
+        elif point == (center[0] + radius , center[1]):
+            angle = 0
+        elif point == (center[0] - radius , center[1]):
+            angle = math.pi
+        elif point == (center[0], center[1] - radius):
+            angle = math.pi * 3 / 2
+
+        else:
+            x = point[0]
+            y = point[1]
+            theta = math.atan(y/x)
+            if point[0] > center[0] and point[1] > center[1]:
+                angle = theta
+            elif point[0] < center[0] and point[1] > center[1]:
+                angle = math.pi - theta
+            elif point[0] > center[0] and point[1] < center[1]:
+                angle = (2*math.pi) - theta
+            elif point[0] < center[0] and point[1] < center[1]:
+                angle = theta+(math.pi)
+        return angle
 
 
 
 
+    def getMinDistanceAlongCircumference(self, zeroPoint , thetas):
+        distances = []
+        if thetas == []:
+            return zeroPoint
+        else:
+            for theta in thetas:
+                distances.append(abs(theta - zeroPoint))
+            angle = min(distances)
+            corrIndex = distances.index(angle)
+            return thetas[corrIndex]
 
 
-class Morphogen(Agent):
-    '''Creation of Morphogen Agent'''
+        
+        
+
+
+
+class SetRange:
+
+    def __init__(self , num1 , num2 , closed , lapped):
+        self.lower = min(num1 , num2)
+        self.upper = max(num1 , num2)
+        self.closed = closed
+        self.lapped = lapped
+
+    def __lt__(self , other):
+        return self.lower < other.lower
+
+
+    def numInRange(self , num):
+        if self.closed:
+            if num == self.lower or num == self.upper:
+                return True
+        if not self.lapped:
+            return (num > self.lower) and (num < self.upper)
+        else:
+            return (num < self.lower) or (num > self.upper)
+ 
+
+    def getPoints(self):
+        return (self.upper , self.lower)
+
+    def getRange(self):
+        if self.lapped:
+            return (2*math.pi) - (self.upper - self.lower)
+        return self.upper - self.lower
+
+    def __eq__(self , other):
+        return (self.upper == other.upper) and (self.lower == self.lower) and (self.closed == other.closed)
+
+    def __str__(self) -> str:
+        if self.closed:
+            return "[{} , {}]".format(self.lower , self.upper)
+        return "({} , {})".format(self.lower , self.upper)
+
+
+class SetRangeUnion:
     
-    def __init__(self, unique_id: int, model: Model) -> None:
-        super().__init__(unique_id, model)
-        self.internalR = Constants.MORPHOGEN_R
+    def __init__(self , sets):
+        setCopy = []
+        for set in sets:
+            if set.lapped == True:
+                setCopy.append(SetRange(0 , set.lower , True , False))
+                setCopy.append(SetRange(set.upper , math.pi*2 , True , False))
+            else: 
+                setCopy.append(set)
 
-    def step(self):
-        return
-    
+        self.sets = sorted(setCopy)
+        if len(self.sets) > 1:
+            i = 1
+            setCopy = copy.deepcopy(self.sets)
+            new = []
+            currSet = self.sets[0]
+            while i <= len(self.sets) - 1:
+                nextSet = self.sets[i]
+                if currSet.upper > nextSet.lower:
+                    if nextSet.upper > currSet.upper:
+                        currSet.upper = nextSet.upper
+                else: 
+                    new.append(currSet)
+                    currSet = nextSet
+                i += 1
+            new.append(currSet)
+            self.sets = new
 
+
+    def numInRange(self , num):
+        for set in self.sets:
+            val = set.numInRange(num)
+            if val:
+                return True
+        return False
+
+    def getRange(self):
+        r = 0
+        for s in self.sets:
+            r += s.getRange()
+        return r
+
+
+    def getPoints(self):
+        points = []
+        for s in self.sets:
+            points.append(s.getPoints())
+        return points
 
 
 class Nodal(Agent):
@@ -514,5 +785,5 @@ class Lefty(Agent):
 
 
 
-
+    
 
