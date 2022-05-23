@@ -7,6 +7,7 @@ from mesa.datacollection import DataCollector
 from mesa.space import ContinuousSpace
 from mesa.visualization.TextVisualization import TextData
 import math
+import Brandon
 import copy
 import Constants
 
@@ -16,12 +17,12 @@ class ABM(Model):
         Global Variables:
             num_stem_cells : Int
             sauce : Boolean : True if model will measure cell differentiation after a certain diff_timer elapses
-            num_nodals : Int
-            num_leftys : Int
+            num_BMP4 : Int
+            num_NOG : Int
             spawn_freq : Int : How much energy a given StemCell needs to reproduce
             diff_timer : Int
-            endo_min : Int : How much concentration of Nodal a Stem Cell needs to come into contact to at minimum differntiate into an endoderm cell
-            ecto_max : Int : How little concentration of Nodal a Stem Cell needs to come into contact to at maximum differntiate into an ectoderm cell
+            endo_min : Int : How much concentration of BMP4 a Stem Cell needs to come into contact to at minimum differntiate into an endoderm cell
+            ecto_max : Int : How little concentration of BMP4 a Stem Cell needs to come into contact to at maximum differntiate into an ectoderm cell
             one_cells_contact : Int : This attribute is used to test, it is designed to take an arbitraty Stem Cell each step and access its chemical contact
             start_diff : Boolean : When this is True, start positional differentiation if other Stem Cells have already differentiated nearby
             stem_cell_ex : StemCell : This attribute is used to latch onto a StemCell for purposes of tracking
@@ -32,11 +33,11 @@ class ABM(Model):
             schedule : StagedActivation : Staged Activation Schedule that Follows the Stages listed above
             running : True : Batch will continually run this model's steps indefinitely'''
 
-    def __init__(self, num_stem_cells: int , sauce: bool , num_nodals: int , num_leftys: int , spawn_freq: int , diff_timer: int , endo_min: int , ecto_max: int , max_x:int=20 , max_y:int=20) -> None:
+    def __init__(self, num_stem_cells: int , sauce: bool , num_BMP4: int , num_NOG: int , spawn_freq: int , diff_timer: int , endo_min: int , ecto_max: int , max_x:int=20 , max_y:int=20) -> None:
         self.num_stem_cells = num_stem_cells
         self.sauce = sauce
-        self.num_nodals = num_nodals
-        self.num_leftys = num_leftys
+        self.num_BMP4 = num_BMP4
+        self.num_NOG = num_NOG
         self.spawn_freq = spawn_freq
         self.diff_timer = diff_timer
         self.endo_min = endo_min
@@ -62,8 +63,9 @@ class ABM(Model):
         self.mConcY = 0
         self.mR = 0
         self.cells = []
-        self.leftys = []
-        self.nodals = []
+        self.NOG = []
+        self.BMP4 = []
+        self.BMP4vector = Brandon.unot
         self.setup()
         
         
@@ -86,10 +88,10 @@ class ABM(Model):
 
 
 
-        #Add Nodals to the Space
-        for i in range(self.num_nodals):
+        #Add BMP4 to the Space
+        for i in range(self.num_BMP4):
             self.currentIDNum += 1
-            n = Nodal(self.currentIDNum, self)
+            n = BMP4(self.currentIDNum, self)
             self.schedule.add(n)
             r = self.random.random()
             theta = self.random.random() * 2 * math.pi
@@ -97,12 +99,12 @@ class ABM(Model):
             y = r * math.sin(theta) + self.center_pos[1]
             self.space.place_agent(n , (x , y))
 
-            self.nodals.append(n)
+            self.BMP4.append(n)
 
-        #Add Leftys to the Space
-        for i in range(self.num_leftys):
+        #Add NOG to the Space
+        for i in range(self.num_NOG):
             self.currentIDNum += 1
-            l = Lefty(self.currentIDNum, self)
+            l = NOG(self.currentIDNum, self)
             self.schedule.add(l)
             r = self.random.random()
             theta = self.random.random() * 2 * math.pi
@@ -110,9 +112,13 @@ class ABM(Model):
             y = r * math.sin(theta) + self.center_pos[1]
             self.space.place_agent(l , (x , y))
 
-            self.leftys.append(l)
+            self.NOG.append(l)
 
         self.calcAvgs()
+        
+        
+
+
 
 
     def calcAvgs(self):
@@ -147,9 +153,8 @@ class ABM(Model):
                 neighbors = self.space.get_neighbors(agent.pos , agent.internalR , True)
                 for neighbor in neighbors:
                     if type(neighbor) == StemCell and neighbor.differentiated == "virgin":
-                        if self.random.random() > 0.1:
-                            agent.differentiated = neighbor.differentiated
-                            agent.time_for_diff = 0
+                        agent.differentiated = neighbor.differentiated
+                        agent.time_for_diff = 0
 
 
 
@@ -180,13 +185,16 @@ class ABM(Model):
                                 self.cellTouchingDict[neighbor.unique_id].append(agent)
                       
 
-   
+    def updateBMP4(self):
+        self.BMP4vector = Brandon.reaction(self.BMP4)
+
 
     def step(self):
         self.calcAvgs()
         if self.hasCells:
             self.updateParams()
             self.updateTouchingDict()
+            self.updateBMP4()
         if self.start_diff == True:
             self.cascade()
             if self.end_time == -2:
@@ -218,7 +226,7 @@ class StemCell(Agent):
         self.energy = 0
         self.time_for_diff = self.random.randrange(Constants.TIME_FOR_DIFF_UPPER - 10 , Constants.TIME_FOR_DIFF_UPPER + 1)
         self.internalR = Constants.STEMCELL_R
-        self.absorbed = False
+        self.absorbedNOG = []
 
 
     def step(self):
@@ -228,7 +236,7 @@ class StemCell(Agent):
             self.differentiation_tick()
 
     def movement2(self):
-        scaleFactor = 1
+        scaleFactor = 5
         self.energy += self.random.randrange(0 , 3)
         if self.differentiated == "virgin":
             neighbors = self.model.cellTouchingDict[self.unique_id]
@@ -251,14 +259,23 @@ class StemCell(Agent):
             for pTuple in thetas0:
                 thetas.append(pTuple[0])
                 thetas.append(pTuple[1])
-            zpAngle = self.model.random.random() * math.pi * 2
+            centerDir = self.model.space.get_heading(self.pos , (self.model.avg_x , self.model.avg_y))
+            magCenterDir = (centerDir[0] ** 2 + centerDir[1] ** 2)**0.5
+            zpAngle = math.atan(centerDir[1] / centerDir[0])
+            if centerDir[0] < 0 and centerDir[1] > 0:
+                zpAngle += math.pi
+            if centerDir[0] < 0 and centerDir[1] < 0:
+                zpAngle += math.pi
+            if centerDir[0] > 0 and centerDir[1] < 0:
+                zpAngle += 2*math.pi
+            zpAngle += self.random.random()*(math.pi)/magCenterDir
+            while zpAngle > math.pi * 2:
+                zpAngle -= math.pi*2
             if zpAngle < (math.pi / 2) or zpAngle > (3 * math.pi / 2):
                 l = True
             else:
                 l = False
             zpRange = SetRange(zpAngle + math.pi / 2 , zpAngle - math.pi / 2 , True , l)
-            x = 0
-            y = 0
             noThetas = True
             for theta in thetas:
                 if zpRange.numInRange(theta):
@@ -266,8 +283,9 @@ class StemCell(Agent):
             if not noThetas:
                 if neighborSet.numInRange(zpAngle):
                     zpAngle = self.getMinDistanceAlongCircumference(zpAngle , thetas)
-                x = self.internalR * math.cos(zpAngle)
-                y = self.internalR * math.sin(zpAngle)
+            x = self.internalR * math.cos(zpAngle)
+            y = self.internalR * math.sin(zpAngle)
+
             head1 = self.model.space.get_heading(self.pos , (self.pos[0] + x, self.pos[1] + y))
             head1 = (head1[0] *(((2*math.pi)-r)/(2*math.pi)) , head1[1]*(((2*math.pi)-r)/(2*math.pi)))
             h = head1[0]
@@ -277,8 +295,6 @@ class StemCell(Agent):
                 norm = 1
             newPos = (self.pos[0] + (h/norm) , self.pos[1] + (v/norm))              
             self.model.space.move_agent(self , newPos)
-
-
 
 
 
@@ -294,7 +310,9 @@ class StemCell(Agent):
             self.model.cells.append(newCell)
 
 
-    def movement(self):
+#Does not work do not use 
+#(No more generic morphogens are in this model)
+    def BROKEN(self):
         scaleFactor = 0.9
         self.energy += self.random.randrange(0 , 3)
         if self.differentiated == "virgin":
@@ -373,24 +391,36 @@ class StemCell(Agent):
     def reaction_regulation(self):
         return
 
+    def spawnBMP4(self, num):
+        for i in range(num):
+            self.model.currentIDNum += 1
+            n = NOG(self.model.currentIDNum, self.model)
+            self.model.schedule.add(n)
+            r = self.internalR + 0.001
+            theta = self.model.random.random() * 2 * math.pi
+            x = r * math.cos(theta) + self.pos[0]
+            y = r * math.sin(theta) + self.pos[1]
+            self.model.space.place_agent(n , (x , y))
+        self.absorbedNOG = []
+
+
     def differentiation_tick(self):
         if self.time_for_diff > 0:
             self.time_for_diff -= 1
-            touchingNodal = 0
-            for agent in self.model.space._agent_to_index:
-                if type(agent) == Nodal and agent.active == True:
-                    if self.isTouching(agent):
-                        touchingNodal += 1
-            self.chemical_contact += touchingNodal
         else:
+            matrixIndex = (self.pos[0] // Brandon.dx, self.pos[1] // Brandon.dx)
+            vectorIndex = points * matrixIndex[0] + matrixIndex[1]
+            BMP4conc = self.model.BMP4vector[vectorIndex]
+
+
             if self.differentiated == "virgin":
                 if self.model.start_diff == False:
                     self.model.start_diff = True
-                if self.chemical_contact >= self.model.endo_min:
+                if self.BMP4conc >= self.model.endo_min:
                     self.differentiated = "endo"
-                if self.chemical_contact < self.model.endo_min and self.chemical_contact >= self.model.ecto_max:
+                if self.BMP4conc < self.model.endo_min and self.chemical_contact >= self.model.ecto_max:
                     self.differentiated = "meso"
-                if self.chemical_contact < self.model.ecto_max:
+                if self.BMP4conc < self.model.ecto_max:
                     self.differentiated = "ecto"
                 
 
@@ -544,7 +574,6 @@ class SetRangeUnion:
         self.sets = sorted(setCopy)
         if len(self.sets) > 1:
             i = 1
-            setCopy = copy.deepcopy(self.sets)
             new = []
             currSet = self.sets[0]
             while i <= len(self.sets) - 1:
@@ -581,8 +610,8 @@ class SetRangeUnion:
         return points
 
 
-class Nodal(Agent):
-    '''Creation of Nodal Agent'''
+class BMP4(Agent):
+    '''Creation of BMP4 Agent'''
 
     def __init__(self, unique_id: int, model: Model) -> None:
         super().__init__(unique_id, model)
@@ -590,7 +619,7 @@ class Nodal(Agent):
         self.immobilized_timer = 0
         self.active = True
         self.active_timer = 0
-        self.internalR = Constants.NODAL_R
+        self.internalR = Constants.BMP4_R
 
     def step(self):
         self.movement()
@@ -678,7 +707,7 @@ class Nodal(Agent):
     def reaction_regulation(self):
         if self.active_timer == 0:
             for agent in self.model.space._agent_to_index:
-                if type(agent) == Lefty:
+                if type(agent) == NOG:
                     if self.isTouching(agent):
                         self.active = False
                         self.active_timer = self.random.randrange(0 , 11)
@@ -700,86 +729,88 @@ class Nodal(Agent):
 
 
 
-class Lefty(Agent):
-    '''Creation of Lefty Agent'''
+#class NOG(Agent):
+ #   '''Creation of NOG Agent'''
 
-    def __init__(self, unique_id: int, model: Model) -> None:
-        super().__init__(unique_id, model)
-        self.internalR = Constants.LEFTY_R
-
-
-    def step(self):
-        self.movement()
+  #  def __init__(self, unique_id: int, model: Model) -> None:
+   #     super().__init__(unique_id, model)
+    #    self.internalR = Constants.NOG_R
+     #   self.absorbed = False
 
 
-    def movement(self):
-            heading = self.model.space.get_heading(self.pos , self.model.center_pos)
-            if heading[0] > 0 and heading[1] > 0:
-                if self.random.randrange(0 , 2) < 1: #Vertical Shift
-
-                    x = heading[0]
-                    y = self.random.uniform(-heading[0] , heading[1])
-
-                else: #Horizontal Shift
-
-                    x = self.random.uniform(-heading[1] , heading[0])
-                    y = heading[1]
-
-            elif heading[0] < 0 and heading[1] < 0:
-
-                if self.random.randrange(0 , 2) < 1: #Vertical Shift
-
-                    x = heading[0]
-                    y = self.random.uniform(heading[1] , -heading[0])
-
-                else: #Horizontal Shift
-
-                    x = self.random.uniform(heading[0] , -heading[1])
-                    y = heading[1]
-
-            elif heading[0] < 0 and heading[1] > 0:
-
-                if self.random.randrange(0 , 2) < 1: #Vertical Shift
-
-                    x = heading[0]
-                    y = self.random.uniform(heading[0] , heading[1])
-
-                else: #Horizontal Shift
-
-                    x = self.random.uniform(heading[0] , heading[1])
-                    y = heading[1]
-
-            elif heading[0] > 0 and heading[1] < 0:
-
-                if self.random.randrange(0 , 2) < 1: #Vertical Shift
-
-                    x = heading[0]
-                    y = self.random.uniform(heading[1] , heading[0])
-
-                else: #Horizontal Shift
-
-                    x = self.random.uniform(heading[1] , heading[0])
-                    y = heading[1]
-
-            elif heading == (0,0):
-
-                x = 1
-                y = 1
+    #def step(self):
+     #   if not self.absorbed:
+      #      self.movement()
 
 
-            norm = (x ** 2 + y ** 2) ** 0.5
-            xDisplacement = x / (norm * 0.5)
-            yDisplacement = y / (norm * 0.5)
+    #def movement(self):
+     #       heading = self.model.space.get_heading(self.pos , self.model.center_pos)
+      #      if heading[0] > 0 and heading[1] > 0:
+       #         if self.random.randrange(0 , 2) < 1: #Vertical Shift
+
+        #            x = heading[0]
+         #           y = self.random.uniform(-heading[0] , heading[1])
+
+          #      else: #Horizontal Shift
+
+                    #x = self.random.uniform(-heading[1] , heading[0])
+           #         y = heading[1]
+
+         #   elif heading[0] < 0 and heading[1] < 0:
+
+          #      if self.random.randrange(0 , 2) < 1: #Vertical Shift
+
+           #         x = heading[0]
+            #        y = self.random.uniform(heading[1] , -heading[0])
+
+             #   else: #Horizontal Shift
+
+              #      x = self.random.uniform(heading[0] , -heading[1])
+               #     y = heading[1]
+
+            #elif heading[0] < 0 and heading[1] > 0:
+
+             #   if self.random.randrange(0 , 2) < 1: #Vertical Shift
+
+              #      x = heading[0]
+               #     y = self.random.uniform(heading[0] , heading[1])
+
+                #else: #Horizontal Shift
+
+                 #   x = self.random.uniform(heading[0] , heading[1])
+                  #  y = heading[1]
+
+           # elif heading[0] > 0 and heading[1] < 0:
+
+            #    if self.random.randrange(0 , 2) < 1: #Vertical Shift
+
+             #       x = heading[0]
+              #      y = self.random.uniform(heading[1] , heading[0])
+
+               # else: #Horizontal Shift
+
+                #    x = self.random.uniform(heading[1] , heading[0])
+                 #   y = heading[1]
+
+            #elif heading == (0,0):
+
+              #  x = 1
+             #   y = 1
+
+
+            #norm = (x ** 2 + y ** 2) ** 0.5
+           # xDisplacement = x / (norm * 0.5)
+          #  yDisplacement = y / (norm * 0.5)
             
-            self.model.space.move_agent(self , (self.pos[0] + xDisplacement , self.pos[1] + yDisplacement))
+            #self.model.space.move_agent(self , (self.pos[0] + xDisplacement , self.pos[1] + yDisplacement))
 
 
-    def isTouching(self , other:Agent):
-        d = self.model.space.get_distance(self.pos , other.pos)
-        l = d - self.internalR - other.internalR
-        if l <= 0:
-            return True 
-        return False
+   # def isTouching(self , other:Agent):
+    #    d = self.model.space.get_distance(self.pos , other.pos)
+     #   l = d - self.internalR - other.internalR
+      #  if l <= 0:
+       #     return True 
+        #return False
 
 
 
